@@ -143,7 +143,8 @@ class RoborockSelectEntity(RoborockCoordinatedEntity, SelectEntity):
         return self.entity_description.value_fn(self._device_status)
  # type: ignore
 
-class RoborockCurrentMapSelectEntity(RoborockCoordinatedEntity, SelectEntity):w
+class RoborockCurrentMapSelectEntity(RoborockCoordinatedEntity, SelectEntity):
+    
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
