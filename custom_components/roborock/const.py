@@ -59,6 +59,7 @@ ROCKROBO_1S = "roborock.vacuum.m1s"
 ROCKROBO_C1 = "roborock.vacuum.c1"
 ROCKROBO_P10 = "roborock.vacuum.a75"
 ROCKROBO_S8_PRO_ULTRA = "roborock.vacuum.a70"
+ROBOROCK_S8_MAXV_ULTRA = "roborock.vacuum.a97"
 ROCKROBO_WILD = "roborock.vacuum.*"  # wildcard
 
 MODELS_VACUUM_WITH_MOP = [
@@ -71,6 +72,7 @@ MODELS_VACUUM_WITH_MOP = [
     ROCKROBO_S7,
     ROCKROBO_S7_MAXV,
     ROCKROBO_S8_PRO_ULTRA,
+    ROBOROCK_S8_MAXV_ULTRA,
     ROCKROBO_P10,
     ROCKROBO_G10_SG,
 ]
@@ -79,6 +81,7 @@ MODELS_VACUUM_WITH_SEPARATE_MOP = [
     ROCKROBO_S7_MAXV,
     ROCKROBO_G10_SG,
     ROCKROBO_P10,
+    ROBOROCK_S8_MAXV_ULTRA,
 ]
 
 MINIMAL_IMAGE_WIDTH = 20

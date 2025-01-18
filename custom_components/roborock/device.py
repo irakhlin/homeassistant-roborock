@@ -72,6 +72,15 @@ class RoborockEntity(Entity):
         """Set map as invalid so it can be updated."""
         self._device_info.is_map_valid = False
 
+    async def set_current_map(self, map_id: int) -> Status | None:
+        try:
+            response = await self.api.set_current_map(map_id)
+        except RoborockException as err:
+            raise HomeAssistantError(
+                f"Error while calling set_current_map with {map_id}"
+            ) from err
+        return response
+    
     async def send(
             self,
             method: RoborockCommand,
@@ -119,6 +128,12 @@ class RoborockCoordinatedEntity(RoborockEntity, CoordinatorEntity[RoborockDataUp
         self.coordinator.schedule_refresh()
         return response
 
+    async def set_current_map(self, map_id: int) -> Status | None:
+        """Set a new map and update the"""
+        response = await super().set_current_map(map_id)
+        self.coordinator.schedule_refresh()
+        return response
+    
     def _update_from_listener(self, value: Status | Consumable):
         """Update the status or consumable data from a listener and then write the new entity state."""
         if isinstance(value, Status):

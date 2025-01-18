@@ -14,24 +14,20 @@ from homeassistant.components.vacuum import (
     ATTR_BATTERY_ICON,
     ATTR_FAN_SPEED,
     ATTR_FAN_SPEED_LIST,
-    STATE_CLEANING,
-    STATE_DOCKED,
-    STATE_ERROR,
-    STATE_IDLE,
-    STATE_PAUSED,
-    STATE_RETURNING,
     StateVacuumEntity,
     VacuumEntityFeature,
 )
+from homeassistant.components.vacuum.const import VacuumActivity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_BATTERY_LEVEL, ATTR_STATE
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, Service, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 from roborock import RoborockStateCode
 from roborock.roborock_typing import RoborockCommand
+from roborock.containers import Status
 
 from . import EntryData
 from .const import DOMAIN
@@ -41,30 +37,37 @@ from .roborock_typing import RoborockHassDeviceInfo
 
 _LOGGER = logging.getLogger(__name__)
 
+CLEANING = VacuumActivity.CLEANING
+DOCKED = VacuumActivity.DOCKED
+ERROR = VacuumActivity.ERROR
+IDLE = VacuumActivity.IDLE
+PAUSED = VacuumActivity.PAUSED
+RETURNING = VacuumActivity.RETURNING
+
 STATE_CODE_TO_STATE = {
-    RoborockStateCode.starting: STATE_IDLE,  # "Starting"
-    RoborockStateCode.charger_disconnected: STATE_IDLE,  # "Charger disconnected"
-    RoborockStateCode.idle: STATE_IDLE,  # "Idle"
-    RoborockStateCode.remote_control_active: STATE_CLEANING,  # "Remote control active"
-    RoborockStateCode.cleaning: STATE_CLEANING,  # "Cleaning"
-    RoborockStateCode.returning_home: STATE_RETURNING,  # "Returning home"
-    RoborockStateCode.manual_mode: STATE_CLEANING,  # "Manual mode"
-    RoborockStateCode.charging: STATE_DOCKED,  # "Charging"
-    RoborockStateCode.charging_problem: STATE_ERROR,  # "Charging problem"
-    RoborockStateCode.paused: STATE_PAUSED,  # "Paused"
-    RoborockStateCode.spot_cleaning: STATE_CLEANING,  # "Spot cleaning"
-    RoborockStateCode.error: STATE_ERROR,  # "Error"
-    RoborockStateCode.shutting_down: STATE_IDLE,  # "Shutting down"
-    RoborockStateCode.updating: STATE_DOCKED,  # "Updating"
-    RoborockStateCode.docking: STATE_RETURNING,  # "Docking"
-    RoborockStateCode.going_to_target: STATE_CLEANING,  # "Going to target"
-    RoborockStateCode.zoned_cleaning: STATE_CLEANING,  # "Zoned cleaning"
-    RoborockStateCode.segment_cleaning: STATE_CLEANING,  # "Segment cleaning"
-    RoborockStateCode.emptying_the_bin: STATE_DOCKED,  # "Emptying the bin" on s7+
-    RoborockStateCode.washing_the_mop: STATE_DOCKED,  # "Washing the mop" on s7maxV
-    RoborockStateCode.going_to_wash_the_mop: STATE_RETURNING,  # "Going to wash the mop" on s7maxV
-    RoborockStateCode.charging_complete: STATE_DOCKED,  # "Charging complete"
-    RoborockStateCode.device_offline: STATE_ERROR,  # "Device offline"
+    RoborockStateCode.starting: IDLE,  # "Starting"
+    RoborockStateCode.charger_disconnected: IDLE,  # "Charger disconnected"
+    RoborockStateCode.idle: IDLE,  # "Idle"
+    RoborockStateCode.remote_control_active: CLEANING,  # "Remote control active"
+    RoborockStateCode.cleaning: CLEANING,  # "Cleaning"
+    RoborockStateCode.returning_home: RETURNING,  # "Returning home"
+    RoborockStateCode.manual_mode: CLEANING,  # "Manual mode"
+    RoborockStateCode.charging: DOCKED,  # "Charging"
+    RoborockStateCode.charging_problem: ERROR,  # "Charging problem"
+    RoborockStateCode.paused: PAUSED,  # "Paused"
+    RoborockStateCode.spot_cleaning: CLEANING,  # "Spot cleaning"
+    RoborockStateCode.error: ERROR,  # "Error"
+    RoborockStateCode.shutting_down: IDLE,  # "Shutting down"
+    RoborockStateCode.updating: DOCKED,  # "Updating"
+    RoborockStateCode.docking: RETURNING,  # "Docking"
+    RoborockStateCode.going_to_target: CLEANING,  # "Going to target"
+    RoborockStateCode.zoned_cleaning: CLEANING,  # "Zoned cleaning"
+    RoborockStateCode.segment_cleaning: CLEANING,  # "Segment cleaning"
+    RoborockStateCode.emptying_the_bin: DOCKED,  # "Emptying the bin" on s7+
+    RoborockStateCode.washing_the_mop: DOCKED,  # "Washing the mop" on s7maxV
+    RoborockStateCode.going_to_wash_the_mop: RETURNING,  # "Going to wash the mop" on s7maxV
+    RoborockStateCode.charging_complete: DOCKED,  # "Charging complete"
+    RoborockStateCode.device_offline: ERROR,  # "Device offline"
 }
 
 ATTR_STATUS = "status"
@@ -181,6 +184,7 @@ def add_services() -> None:
             }
         ),
         RoborockVacuum.async_load_multi_map.__name__,
+        supports_response=SupportsResponse.OPTIONAL,
     )
 
 
@@ -354,7 +358,7 @@ class RoborockVacuum(RoborockCoordinatedEntity, StateVacuumEntity, ABC):
 
     def is_paused_idle_or_error(self) -> bool:
         """Return if the vacuum is in paused, idle or error state."""
-        return self.state == STATE_PAUSED or self.state == STATE_IDLE or self.state == STATE_ERROR
+        return self.state == PAUSED or self.state == IDLE or self.state == ERROR
 
     async def async_start(self) -> None:
         """Start the vacuum."""
@@ -520,7 +524,7 @@ class RoborockVacuum(RoborockCoordinatedEntity, StateVacuumEntity, ABC):
 
     async def async_start_pause(self):
         """Start or pause cleaning if running."""
-        if self.state == STATE_CLEANING:
+        if self.state == CLEANING:
             await self.async_pause()
         else:
             await self.async_start()
@@ -529,20 +533,33 @@ class RoborockVacuum(RoborockCoordinatedEntity, StateVacuumEntity, ABC):
         """Reset the consumable data(ex. brush work time)."""
         await self.send(RoborockCommand.RESET_CONSUMABLE)
 
-    async def async_load_multi_map(self, map_flag: int):
+    async def async_load_multi_map(self, map_flag: int) -> ServiceResponse:
         """Load another map."""
         device_info = self.coordinator.data
         is_valid_flag = True
         if device_info.map_mapping:
             is_valid_flag = device_info.map_mapping.get(map_flag)
 
+        result: Status | None = None
         if is_valid_flag:
-            await self.send(RoborockCommand.LOAD_MULTI_MAP, [map_flag])
+            result = await self.set_current_map(map_flag)
+            if result is not None:
+                _LOGGER.debug(f"Map loaded successfully, updated status: {result}")
             self.set_invalid_map()
+
+        if result is None:
+            return {
+                "status": [
+                    {
+                        "code": "invalid_map_flag",
+                        "message": f"Map flag {map_flag} is invalid",
+                    }
+                ]
+            }
         else:
-            raise HomeAssistantError(
-                f"Map flag {map_flag} is invalid"
-            )
+            return {
+                "status" : [result.as_dict()]
+            }
 
     async def async_send_command(
         self,

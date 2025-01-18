@@ -14,9 +14,9 @@
     "roborock"
   ],
   "requirements": [
-    "python-roborock==0.40.0",
+    "python-roborock@git+https://github.com/irakhlin/python-roborock.git@v0.40.1",
     "ical==7.0.3",
     "dacite==1.8.0"
   ],
-  "version": "1.0.14"
+  "version": "1.0.16"
 }

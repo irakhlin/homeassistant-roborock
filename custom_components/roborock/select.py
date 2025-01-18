@@ -14,11 +14,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 from roborock.containers import Status
 from roborock.roborock_typing import RoborockCommand
-
+from homeassistant.const import EntityCategory
 from . import EntryData, RoborockHassDeviceInfo
 from .const import DOMAIN
 from .coordinator import RoborockDataUpdateCoordinator
 from .device import RoborockCoordinatedEntity
+from custom_components.roborock import device
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,8 +41,6 @@ class RoborockSelectDescription(
     """Class to describe an Roborock select entity."""
 
     protocol_listener: RoborockDataProtocol | None = None
-
-
 
 SELECT_DESCRIPTIONS: list[RoborockSelectDescription] = [
     RoborockSelectDescription(
@@ -67,7 +66,6 @@ SELECT_DESCRIPTIONS: list[RoborockSelectDescription] = [
     ),
 ]
 
-
 async def async_setup_entry(
         hass: HomeAssistant,
         config_entry: ConfigEntry,
@@ -78,11 +76,22 @@ async def async_setup_entry(
         config_entry.entry_id
     ]
     entities: list[RoborockSelectEntity] = []
+    map_entities: list[RoborockCurrentMapSelectEntity] = []
     for _device_id, device_entry_data in domain_data.get("devices").items():
         coordinator = device_entry_data["coordinator"]
         device_info = coordinator.data
         unique_id = slugify(device_info.device.duid)
         device_prop = device_info.props
+        if device_info.map_mapping:
+            map_entities.append(
+                RoborockCurrentMapSelectEntity(
+                    f"selected_map_{unique_id}",
+                    coordinator.device_info,
+                    coordinator,
+                    protocol_listener=RoborockDataProtocol.STATE
+                )
+            )
+
         if device_prop:
             for description in SELECT_DESCRIPTIONS:
                 if description.options_lambda(device_prop.status) is not None:
@@ -96,8 +105,9 @@ async def async_setup_entry(
                     )
         else:
             _LOGGER.warning("Failed setting up selects: No Roborock data")
-    async_add_entities(entities)
 
+    async_add_entities(entities)
+    async_add_entities(map_entities)
 
 class RoborockSelectEntity(RoborockCoordinatedEntity, SelectEntity):
     """A class to let you set options on a Roborock vacuum where the potential options are fixed."""
@@ -131,3 +141,39 @@ class RoborockSelectEntity(RoborockCoordinatedEntity, SelectEntity):
     def current_option(self) -> str | None:
         """Get the current status of the select entity from device_status."""
         return self.entity_description.value_fn(self._device_status)
+ # type: ignore
+
+class RoborockCurrentMapSelectEntity(RoborockCoordinatedEntity, SelectEntity):w
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+            self,
+            unique_id: str,
+            device_info: RoborockHassDeviceInfo,
+            coordinator: RoborockDataUpdateCoordinator,
+            protocol_listener: RoborockDataProtocol) -> None:
+        self._attr_options = list(device_info.map_mapping.values())
+        self._map_mapping = coordinator.data.map_mapping
+        
+        super().__init__(device_info, coordinator, unique_id)
+        self.current_map = self._map_mapping.get((coordinator.data.props.status.map_status - 3) // 4)
+        if (protocol := protocol_listener) is not None:
+            self.api.add_listener(protocol, self._update_from_listener, self.api.cache) 
+
+    async def async_select_option(self, option: str) -> None:
+        if option == self.current_map:
+            return
+        for map_id, map_ in self._map_mapping.items():
+            if map_ == option:
+                self.current_map = self._map_mapping.get(map_id)
+                response = await self.set_current_map(map_id)
+                if response is None:
+                    _LOGGER.warning("Map switching called but no response.")
+                self.set_invalid_map()
+                await self.coordinator.async_request_refresh()
+                break
+
+    @property
+    def current_option(self) -> str | None:
+        """Get the current status of the select entity from device_status."""
+        return self.current_map
